@@ -25,10 +25,17 @@ export function evaluateShot(
   power: number,
   profile: PlayerProfile,
 ): TacticalFeedback {
+  const isSameLane = Math.sign(target.x) === Math.sign(playerPosition.x) && Math.abs(playerPosition.x) > 0.8;
+  const direction = Math.abs(target.x) < 0.9 ? 'au centre' : isSameLane ? 'long de ligne' : 'croisé';
+  const targetDepth = clamp((-target.y - 3.5) / 8.2, 0, 1);
+  const length = targetDepth > 0.68 ? 'profond' : targetDepth < 0.24 ? 'court' : 'mi-long';
+  const shotLabel = `${stroke.charAt(0).toUpperCase()}${stroke.slice(1)} ${direction}, ${length}`;
+
   if (!isTargetInCourt(target)) {
     return {
       verdict: 'faute',
       score: 0,
+      shotLabel,
       title: 'Cible hors du court',
       explanation:
         'La direction cherchée sort du terrain. Garde une marge intérieure, surtout quand tu frappes en mouvement.',
@@ -41,7 +48,7 @@ export function evaluateShot(
     };
   }
 
-  const depth = clamp((-target.y - 3.5) / 8.2, 0, 1);
+  const depth = targetDepth;
   const displacement = clamp(Math.abs(target.x - opponentPosition.x) / 7.2, 0, 1);
   const distance = Math.hypot(target.x - playerPosition.x, target.y - playerPosition.y);
   const ability = ((profile.forehand + profile.backhand) / 2 - 1) / 4;
@@ -79,6 +86,7 @@ export function evaluateShot(
   return {
     verdict,
     score: total,
+    shotLabel,
     title,
     explanation: `${mainReason}${riskReason}`,
     alternative:
@@ -119,4 +127,3 @@ export function explainOpponentChoice(opponent: Opponent, target: Point) {
   }
   return `${opponent.name} choisit une balle profonde vers ${direction} : une option avec de la marge qui t’empêche d’attaquer facilement.`;
 }
-

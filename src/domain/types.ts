@@ -33,6 +33,7 @@ export type Opponent = {
 export type TacticalFeedback = {
   verdict: 'excellent' | 'solide' | 'risqué' | 'faute';
   score: number;
+  shotLabel: string;
   title: string;
   explanation: string;
   alternative: string;
@@ -83,4 +84,3 @@ export const OPPONENTS: Opponent[] = [
     speed: 70,
   },
 ];
-

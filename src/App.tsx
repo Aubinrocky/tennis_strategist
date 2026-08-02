@@ -7,12 +7,14 @@ import {
   type TacticalFeedback,
 } from './domain/types';
 import {
+  emitMovement,
   emitStartRally,
   emitStroke,
   onFeedback,
   onOpponentExplanation,
   onSnapshot,
   type GameSnapshot,
+  type MovementVector,
 } from './game/events';
 import { GameCanvas } from './game/GameCanvas';
 import { loadProfile, saveProfile } from './storage/profile';
@@ -159,6 +161,7 @@ function App() {
   };
 
   const leaveMatch = () => {
+    emitMovement({ x: 0, y: 0 });
     setSnapshot(INITIAL_SNAPSHOT);
     setScreen('lobby');
   };
@@ -223,6 +226,8 @@ function App() {
           <span><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd> bouger</span>
           <span><i className="mouse-icon" /> rejoindre la balle · viser · relâcher vite</span>
         </div>
+
+        <MobileDpad disabled={snapshot.phase === 'decision' || snapshot.phase === 'point-over'} />
 
         <aside className="coach-sidebar" aria-label="Historique du coach tactique">
           <header className="coach-sidebar__header">
@@ -370,6 +375,54 @@ function NumberField({ label, value, min, max, onChange }: { label: string; valu
 
 function SkillField({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
   return <label className="skill-field"><span>{label}</span><output>{value}/5</output><input type="range" min="1" max="5" step="1" value={value} onChange={(event) => onChange(Number(event.target.value))} /></label>;
+}
+
+const MOBILE_DIRECTIONS: Array<{
+  label: string;
+  icon: string;
+  vector: MovementVector;
+  className: string;
+}> = [
+  { label: 'Avancer à gauche', icon: '↖', vector: { x: -1, y: -1 }, className: 'north-west' },
+  { label: 'Avancer', icon: '↑', vector: { x: 0, y: -1 }, className: 'north' },
+  { label: 'Avancer à droite', icon: '↗', vector: { x: 1, y: -1 }, className: 'north-east' },
+  { label: 'Aller à gauche', icon: '←', vector: { x: -1, y: 0 }, className: 'west' },
+  { label: 'Aller à droite', icon: '→', vector: { x: 1, y: 0 }, className: 'east' },
+  { label: 'Reculer à gauche', icon: '↙', vector: { x: -1, y: 1 }, className: 'south-west' },
+  { label: 'Reculer', icon: '↓', vector: { x: 0, y: 1 }, className: 'south' },
+  { label: 'Reculer à droite', icon: '↘', vector: { x: 1, y: 1 }, className: 'south-east' },
+];
+
+function MobileDpad({ disabled }: { disabled: boolean }) {
+  const stopMovement = () => emitMovement({ x: 0, y: 0 });
+
+  return (
+    <div className={`mobile-dpad ${disabled ? 'is-disabled' : ''}`} aria-label="Déplacement tactile">
+      {MOBILE_DIRECTIONS.map((direction) => (
+        <button
+          key={direction.className}
+          className={direction.className}
+          aria-label={direction.label}
+          disabled={disabled}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.currentTarget.setPointerCapture(event.pointerId);
+            emitMovement(direction.vector);
+          }}
+          onPointerUp={(event) => {
+            event.preventDefault();
+            stopMovement();
+          }}
+          onPointerCancel={stopMovement}
+          onLostPointerCapture={stopMovement}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          {direction.icon}
+        </button>
+      ))}
+      <span className="mobile-dpad__center">MOVE</span>
+    </div>
+  );
 }
 
 export default App;

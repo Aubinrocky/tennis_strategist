@@ -20,7 +20,7 @@ import {
   type TacticalFeedback,
   type TrajectoryProfile,
 } from '../domain/types';
-import { gameEvents, type GamePhase } from './events';
+import { gameEvents, type GamePhase, type MovementVector } from './events';
 
 const WIDTH = 1100;
 const HEIGHT = 720;
@@ -54,6 +54,7 @@ export class TennisScene extends Phaser.Scene {
   private readyAt?: number;
   private lockedContact?: ContactAnalysis;
   private lockedWing: StrokeWing = 'coup droit';
+  private touchMovement: MovementVector = { x: 0, y: 0 };
   private rally = 0;
   private pointNumber = 0;
   private lastPressure = 0;
@@ -97,6 +98,7 @@ export class TennisScene extends Phaser.Scene {
     gameEvents.on('command:stroke', this.setStroke, this);
     gameEvents.on('command:opponent', this.setOpponent, this);
     gameEvents.on('command:profile', this.setProfile, this);
+    gameEvents.on('command:movement', this.setTouchMovement, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.cleanUp, this);
 
     this.publish('La simulation démarre : replace-toi derrière la ligne de fond.');
@@ -125,15 +127,20 @@ export class TennisScene extends Phaser.Scene {
       this.phase === 'feedback';
     if (!canMove) return;
     const speed = (5.7 + this.profile.agility * 0.62) * (delta / 1000);
-    const left = this.cursors?.left.isDown || this.wasd?.left.isDown;
-    const right = this.cursors?.right.isDown || this.wasd?.right.isDown;
-    const up = this.cursors?.up.isDown || this.wasd?.up.isDown;
-    const down = this.cursors?.down.isDown || this.wasd?.down.isDown;
+    const left = this.cursors?.left.isDown || this.wasd?.left.isDown || this.touchMovement.x < 0;
+    const right = this.cursors?.right.isDown || this.wasd?.right.isDown || this.touchMovement.x > 0;
+    const up = this.cursors?.up.isDown || this.wasd?.up.isDown || this.touchMovement.y < 0;
+    const down = this.cursors?.down.isDown || this.wasd?.down.isDown || this.touchMovement.y > 0;
+    let moveX = (right ? 1 : 0) - (left ? 1 : 0);
+    let moveY = (down ? 1 : 0) - (up ? 1 : 0);
+    const movementLength = Math.hypot(moveX, moveY);
+    if (movementLength > 1) {
+      moveX /= movementLength;
+      moveY /= movementLength;
+    }
 
-    if (left) this.playerPosition.x -= speed;
-    if (right) this.playerPosition.x += speed;
-    if (up) this.playerPosition.y -= speed;
-    if (down) this.playerPosition.y += speed;
+    this.playerPosition.x += moveX * speed;
+    this.playerPosition.y += moveY * speed;
     this.playerPosition.x = Phaser.Math.Clamp(this.playerPosition.x, -5.75, 5.75);
     this.playerPosition.y = Phaser.Math.Clamp(this.playerPosition.y, 0.9, COURT.runOff - 0.45);
     this.syncActors();
@@ -232,6 +239,7 @@ export class TennisScene extends Phaser.Scene {
     this.pointNumber += 1;
     this.rally = 0;
     this.lastPressure = 0;
+    this.touchMovement = { x: 0, y: 0 };
     this.readyAt = undefined;
     this.lockedContact = undefined;
     this.pressStartedAt = 0;
@@ -604,6 +612,10 @@ export class TennisScene extends Phaser.Scene {
     this.profile = profile;
   }
 
+  private setTouchMovement(movement: MovementVector) {
+    this.touchMovement = movement;
+  }
+
   private publish(
     instruction: string,
     contactLabel?: string,
@@ -664,6 +676,7 @@ export class TennisScene extends Phaser.Scene {
     gameEvents.off('command:stroke', this.setStroke, this);
     gameEvents.off('command:opponent', this.setOpponent, this);
     gameEvents.off('command:profile', this.setProfile, this);
+    gameEvents.off('command:movement', this.setTouchMovement, this);
   }
 }
 

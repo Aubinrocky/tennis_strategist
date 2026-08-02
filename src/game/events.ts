@@ -17,6 +17,11 @@ export type GameSnapshot = {
   timeTotal?: number;
 };
 
+export type MovementVector = {
+  x: -1 | 0 | 1;
+  y: -1 | 0 | 1;
+};
+
 export const gameEvents = new Phaser.Events.EventEmitter();
 
 export const emitStartRally = () => gameEvents.emit('command:start');
@@ -25,6 +30,8 @@ export const emitOpponent = (opponentId: OpponentId) =>
   gameEvents.emit('command:opponent', opponentId);
 export const emitProfile = (profile: PlayerProfile) =>
   gameEvents.emit('command:profile', profile);
+export const emitMovement = (movement: MovementVector) =>
+  gameEvents.emit('command:movement', movement);
 
 export const onSnapshot = (handler: (snapshot: GameSnapshot) => void) => {
   gameEvents.on('game:snapshot', handler);

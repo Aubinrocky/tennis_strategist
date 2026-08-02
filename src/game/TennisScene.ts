@@ -50,6 +50,7 @@ export class TennisScene extends Phaser.Scene {
   private aimGraphics!: Phaser.GameObjects.Graphics;
   private trajectoryGraphics!: Phaser.GameObjects.Graphics;
   private activeBallTween?: Phaser.Tweens.Tween;
+  private activeOpponentTween?: Phaser.Tweens.Tween;
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd?: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private playerPosition: Point = { x: 0, y: 13.5 };
@@ -253,6 +254,7 @@ export class TennisScene extends Phaser.Scene {
 
   private startPoint() {
     if (this.phase === 'opponent' || this.phase === 'bounce' || this.phase === 'decision' || this.phase === 'player') return;
+    this.activeOpponentTween?.stop();
     this.pointNumber += 1;
     this.rally = 0;
     this.lastPressure = 0;
@@ -272,6 +274,7 @@ export class TennisScene extends Phaser.Scene {
   private playOpponentShot() {
     this.phase = 'opponent';
     this.rally += 1;
+    const strikePosition = { ...this.opponentPosition };
     const shot = chooseOpponentShot(
       this.opponentProfile,
       this.playerPosition,
@@ -279,12 +282,12 @@ export class TennisScene extends Phaser.Scene {
       [this.random(), this.random(), this.random()],
     );
     const incomingFlight = modelBallFlight(
-      this.opponentPosition,
+      strikePosition,
       shot.actualTarget,
       shot.trajectory,
     );
     const bounce = modelHardCourtBounce(
-      this.opponentPosition,
+      strikePosition,
       shot.actualTarget,
       incomingFlight,
       shot.trajectory,
@@ -309,7 +312,7 @@ export class TennisScene extends Phaser.Scene {
     const marker = this.worldToScreen(shot.actualTarget);
     this.landingMarker.setPosition(marker.x, marker.y);
     this.animateOpponentRecovery(physicalShot);
-    this.animateBall(this.opponentPosition, shot.actualTarget, incomingFlight.durationMs, shot.trajectory, (progress) => sampleFlightHeight(incomingFlight, progress), (progress) => sampleFlightGroundProgress(incomingFlight, progress), () => {
+    this.animateBall(strikePosition, shot.actualTarget, incomingFlight.durationMs, shot.trajectory, (progress) => sampleFlightHeight(incomingFlight, progress), (progress) => sampleFlightGroundProgress(incomingFlight, progress), () => {
       if (shot.isFault) {
         this.landingMarker.setVisible(false);
         this.finishPoint(`${this.opponentProfile.name} fait faute. Point gagné.`);
@@ -405,15 +408,47 @@ export class TennisScene extends Phaser.Scene {
 
   private animateOpponentRecovery(shot: OpponentShot) {
     const targetX = Phaser.Math.Clamp(shot.target.x * 0.2, -1.1, 1.1);
-    const startX = this.opponentPosition.x;
+    const targetY = -13.2;
+    const start = { ...this.opponentPosition };
     const progress = { value: 0 };
-    this.tweens.add({
+    this.activeOpponentTween?.stop();
+    this.activeOpponentTween = this.tweens.add({
       targets: progress,
       value: 1,
       duration: shot.duration * 0.82,
       ease: 'Sine.easeInOut',
       onUpdate: () => {
-        this.opponentPosition.x = Phaser.Math.Linear(startX, targetX, progress.value);
+        this.opponentPosition.x = Phaser.Math.Linear(start.x, targetX, progress.value);
+        this.opponentPosition.y = Phaser.Math.Linear(start.y, targetY, progress.value);
+        this.syncActors();
+      },
+    });
+  }
+
+  private animateOpponentChase(target: Point, duration: number) {
+    const start = { ...this.opponentPosition };
+    const idealPosition = {
+      x: Phaser.Math.Clamp(target.x * 0.9, -4.8, 4.8),
+      y: Phaser.Math.Clamp(target.y - 2.15, -COURT.runOff + 0.6, -7.2),
+    };
+    const distance = Phaser.Math.Distance.Between(start.x, start.y, idealPosition.x, idealPosition.y);
+    const runningSpeed = 4.7 + this.opponentProfile.speed * 0.035;
+    const reachableDistance = runningSpeed * (duration / 1000);
+    const reachRatio = distance > 0 ? Phaser.Math.Clamp(reachableDistance / distance, 0, 1) : 1;
+    const destination = {
+      x: Phaser.Math.Linear(start.x, idealPosition.x, reachRatio),
+      y: Phaser.Math.Linear(start.y, idealPosition.y, reachRatio),
+    };
+    const progress = { value: 0 };
+    this.activeOpponentTween?.stop();
+    this.activeOpponentTween = this.tweens.add({
+      targets: progress,
+      value: 1,
+      duration,
+      ease: 'Sine.easeInOut',
+      onUpdate: () => {
+        this.opponentPosition.x = Phaser.Math.Linear(start.x, destination.x, progress.value);
+        this.opponentPosition.y = Phaser.Math.Linear(start.y, destination.y, progress.value);
         this.syncActors();
       },
     });
@@ -484,6 +519,7 @@ export class TennisScene extends Phaser.Scene {
     );
     const duration = flight.durationMs;
     this.publish(`${this.lockedWing === 'coup droit' ? 'Coup droit' : 'Revers'} · ${contact.label}. La dispersion décide maintenant de la balle réelle.`);
+    this.animateOpponentChase(resolution.actualTarget, duration);
     this.animateBall(this.incomingTarget, flightTarget, duration, resolution.trajectory, (progress) => sampleFlightHeight(flight, progress), (progress) => sampleFlightGroundProgress(flight, progress), () => {
       gameEvents.emit('game:feedback', feedback);
       this.intendedMarker.setVisible(false);
@@ -493,11 +529,6 @@ export class TennisScene extends Phaser.Scene {
       }
 
       this.lastPressure = feedback.pressure ?? 0;
-      this.opponentPosition = {
-        x: Phaser.Math.Clamp(resolution.actualTarget.x * 0.9, -4.2, 4.2),
-        y: Phaser.Math.Clamp(resolution.actualTarget.y - 2.15, -COURT.runOff + 0.6, -7.2),
-      };
-      this.syncActors();
       this.phase = 'feedback';
       this.publish(`Balle bonne · ${this.lastPressure} % de pression. Replace-toi immédiatement.`);
       this.time.delayedCall(520, () => this.playOpponentShot());
@@ -713,8 +744,13 @@ export class TennisScene extends Phaser.Scene {
     const opponent = this.worldToScreen(this.opponentPosition);
     const playerScale = this.depthScale(this.playerPosition.y);
     const opponentScale = this.depthScale(this.opponentPosition.y);
-    this.player?.setPosition(player.x, player.y).setScale(playerScale).setDepth(10 + this.playerPosition.y);
-    this.opponent?.setPosition(opponent.x, opponent.y).setScale(opponentScale).setDepth(10 + this.opponentPosition.y);
+    this.player?.setPosition(player.x, player.y).setScale(playerScale).setDepth(this.actorDepth(this.playerPosition.y));
+    this.opponent?.setPosition(opponent.x, opponent.y).setScale(opponentScale).setDepth(this.actorDepth(this.opponentPosition.y));
+  }
+
+  private actorDepth(y: number) {
+    const t = Phaser.Math.Clamp((y + COURT.runOff) / (COURT.runOff * 2), 0, 1);
+    return 9 + t * 2;
   }
 
   private depthScale(y: number) {
@@ -748,6 +784,7 @@ export class TennisScene extends Phaser.Scene {
   }
 
   private cleanUp() {
+    this.activeOpponentTween?.stop();
     gameEvents.off('command:start', this.startPoint, this);
     gameEvents.off('command:stroke', this.setStroke, this);
     gameEvents.off('command:opponent', this.setOpponent, this);

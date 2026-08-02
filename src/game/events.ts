@@ -6,12 +6,14 @@ import type {
   TacticalFeedback,
 } from '../domain/types';
 
-export type GamePhase = 'idle' | 'opponent' | 'decision' | 'player' | 'feedback';
+export type GamePhase = 'idle' | 'opponent' | 'decision' | 'player' | 'feedback' | 'point-over';
 
 export type GameSnapshot = {
   phase: GamePhase;
   instruction: string;
   rally: number;
+  contactLabel?: string;
+  timeLeft?: number;
 };
 
 export const gameEvents = new Phaser.Events.EventEmitter();

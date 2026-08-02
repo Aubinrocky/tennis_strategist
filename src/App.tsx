@@ -7,6 +7,7 @@ import {
   type TacticalFeedback,
 } from './domain/types';
 import {
+  emitStartRally,
   emitStroke,
   onFeedback,
   onOpponentExplanation,
@@ -28,6 +29,7 @@ const PHASE_LABELS: Record<GameSnapshot['phase'], string> = {
   decision: 'À toi de jouer',
   player: 'Ta trajectoire',
   feedback: 'Analyse',
+  'point-over': 'Point terminé',
 };
 
 type CoachMessage = {
@@ -40,6 +42,8 @@ type CoachMessage = {
   alternative?: string;
   score?: number;
   verdict?: TacticalFeedback['verdict'];
+  contact?: string;
+  outcome?: TacticalFeedback['outcome'];
 };
 
 function App() {
@@ -78,6 +82,8 @@ function App() {
           alternative: nextFeedback.alternative,
           score: nextFeedback.score,
           verdict: nextFeedback.verdict,
+          contact: nextFeedback.contactQuality,
+          outcome: nextFeedback.outcome,
         },
       ]);
     });
@@ -167,6 +173,17 @@ function App() {
         <div className="match-instruction">
           <span>ÉCHANGE {String(snapshot.rally).padStart(2, '0')}</span>
           <p>{snapshot.instruction}</p>
+          {snapshot.contactLabel && (
+            <div className="contact-live">
+              <strong>{snapshot.contactLabel}</strong>
+              {snapshot.timeLeft !== undefined && (
+                <span><i style={{ width: `${Math.max(0, Math.min(100, snapshot.timeLeft / 5.2))}%` }} /></span>
+              )}
+            </div>
+          )}
+          {snapshot.phase === 'point-over' && (
+            <button className="next-point-button" onClick={emitStartRally}>Nouveau point <span>→</span></button>
+          )}
         </div>
 
         <div className="match-controls" aria-label="Type de frappe">
@@ -180,7 +197,7 @@ function App() {
 
         <div className="match-help">
           <span><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd> bouger</span>
-          <span><i className="mouse-icon" /> maintenir · viser · relâcher</span>
+          <span><i className="mouse-icon" /> rejoindre la balle · viser · relâcher vite</span>
         </div>
 
         <aside className="coach-sidebar" aria-label="Historique du coach tactique">
@@ -205,6 +222,11 @@ function App() {
                     <strong className={`coach-score coach-score--${message.verdict}`}>{message.score}</strong>
                   )}
                 </div>
+                {message.contact && (
+                  <div className={`coach-contact coach-contact--${message.outcome}`}>
+                    Contact · {message.contact}{message.outcome === 'out' ? ' · balle dehors' : message.outcome === 'net' ? ' · filet' : message.outcome === 'miss' ? ' · manquée' : ' · balle bonne'}
+                  </div>
+                )}
                 <p>{message.body}</p>
                 {message.alternative && (
                   <div className="coach-alternative"><span>Alternative</span><p>{message.alternative}</p></div>

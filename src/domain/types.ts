@@ -5,6 +5,14 @@ export type Point = {
   y: number;
 };
 
+export type ContactQuality = 'en avance' | 'équilibré' | 'en retard' | 'en extension' | 'manqué';
+
+export type TrajectoryProfile = {
+  pace: number;
+  arc: number;
+  spin: StrokeType;
+};
+
 export type PlayerProfile = {
   name: string;
   dominantHand: 'Droitier' | 'Gaucher';
@@ -38,6 +46,11 @@ export type TacticalFeedback = {
   explanation: string;
   alternative: string;
   factors: Array<{ label: string; value: number }>;
+  contactQuality?: ContactQuality;
+  intendedTarget?: Point;
+  actualTarget?: Point;
+  outcome?: 'in' | 'out' | 'net' | 'miss';
+  pressure?: number;
 };
 
 export const DEFAULT_PROFILE: PlayerProfile = {

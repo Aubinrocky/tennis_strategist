@@ -319,6 +319,11 @@ kbd { min-width: 18px; height: 18px; display: inline-grid; place-items: center; 
 .match-instruction { top: 78px; left: calc((100% - var(--coach-width)) / 2); min-width: 340px; max-width: min(560px, calc(100% - var(--coach-width) - 40px)); transform: translateX(-50%); padding: 9px 15px; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; background: rgba(5, 17, 13, .68); text-align: center; backdrop-filter: blur(12px); }
 .match-instruction span { color: var(--lime); font-size: 7px; font-weight: 800; letter-spacing: .14em; }
 .match-instruction p { margin: 2px 0 0; color: #cbd5d0; font-size: 10px; }
+.contact-live { display: grid; grid-template-columns: minmax(0, 1fr) 86px; align-items: center; gap: 10px; margin-top: 7px; padding-top: 7px; border-top: 1px solid rgba(255,255,255,.09); }
+.contact-live strong { overflow: hidden; color: #f3f5ed; font-size: 8px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.contact-live > span { height: 3px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.1); }
+.contact-live > span i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #ff966e, var(--lime)); transition: width .09s linear; }
+.next-point-button { display: inline-flex; align-items: center; gap: 12px; margin-top: 9px; padding: 7px 11px; border: 0; border-radius: 999px; background: var(--lime); color: #102017; font-size: 8px; font-weight: 800; cursor: pointer; }
 
 .match-controls { bottom: 22px; left: calc((100% - var(--coach-width)) / 2); display: flex; align-items: center; gap: 3px; transform: translateX(-50%); padding: 5px; border: 1px solid rgba(255,255,255,.13); border-radius: 999px; background: rgba(5, 17, 13, .76); backdrop-filter: blur(12px); }
 .match-controls > span { margin: 0 8px 0 10px; color: #788b83; font-size: 7px; font-weight: 800; letter-spacing: .14em; }
@@ -406,6 +411,8 @@ kbd { min-width: 18px; height: 18px; display: inline-grid; place-items: center; 
 .coach-message__title { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
 .coach-message__title h3 { margin: 0; color: #eef3ef; font: 800 13px/1.25 Manrope, sans-serif; letter-spacing: -.02em; }
 .coach-message > p { margin: 8px 0 0; color: #a9b9b1; font-size: 9.5px; line-height: 1.55; }
+.coach-contact { width: fit-content; margin-top: 9px; padding: 4px 7px; border-radius: 999px; background: rgba(223,255,105,.09); color: var(--lime); font-size: 7px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.coach-contact--out, .coach-contact--net, .coach-contact--miss { background: rgba(255,137,99,.11); color: #ff9d7d; }
 .coach-score { min-width: 35px; height: 28px; display: grid; place-items: center; border-radius: 999px; background: rgba(223,255,105,.12); color: var(--lime); font: 800 11px Manrope, sans-serif; }
 .coach-score--risqué, .coach-score--faute { background: rgba(255,137,99,.12); color: #ff9d7d; }
 .coach-alternative { margin-top: 11px; padding: 9px 10px; border-left: 2px solid var(--lime); border-radius: 0 7px 7px 0; background: rgba(0,0,0,.15); }

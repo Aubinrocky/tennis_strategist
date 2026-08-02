@@ -117,16 +117,33 @@ function App() {
   }, [coachMessages]);
 
   useEffect(() => {
-    if (screen !== 'match' || snapshot.phase !== 'decision') return;
-    const handleStrokeShortcut = (event: KeyboardEvent) => {
-      if (event.key !== '1' && event.key !== '2' && event.key !== '3') return;
+    if (screen !== 'match') return;
+    const handleMatchShortcut = (event: KeyboardEvent) => {
+      if (event.repeat) return;
+      if (event.key.toLowerCase() === 'r' && snapshot.phase === 'point-over') {
+        event.preventDefault();
+        emitStartRally();
+        return;
+      }
+      if (snapshot.phase !== 'decision') return;
       const choices: StrokeType[] = ['lifté', 'à plat', 'slice'];
-      const nextStroke = choices[Number(event.key) - 1];
-      setStroke(nextStroke);
-      emitStroke(nextStroke);
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        setStroke((currentStroke) => {
+          const nextStroke = choices[(choices.indexOf(currentStroke) + 1) % choices.length];
+          emitStroke(nextStroke);
+          return nextStroke;
+        });
+        return;
+      }
+      if (event.key === '1' || event.key === '2' || event.key === '3') {
+        const nextStroke = choices[Number(event.key) - 1];
+        setStroke(nextStroke);
+        emitStroke(nextStroke);
+      }
     };
-    window.addEventListener('keydown', handleStrokeShortcut);
-    return () => window.removeEventListener('keydown', handleStrokeShortcut);
+    window.addEventListener('keydown', handleMatchShortcut);
+    return () => window.removeEventListener('keydown', handleMatchShortcut);
   }, [screen, snapshot.phase]);
 
   const selectStroke = (value: StrokeType) => {
@@ -204,12 +221,12 @@ function App() {
             </div>
           )}
           {snapshot.phase === 'point-over' && (
-            <button className="next-point-button" onClick={emitStartRally}>Nouveau point <span>→</span></button>
+            <button className="next-point-button" onClick={emitStartRally}><kbd>R</kbd> Nouveau point <span>→</span></button>
           )}
         </div>
 
         <div className={`match-controls ${snapshot.phase === 'decision' ? 'is-focus' : ''}`} aria-label="Type de frappe">
-          <span>{snapshot.phase === 'decision' ? 'CHOISIS' : 'FRAPPE'}</span>
+          <span>{snapshot.phase === 'decision' ? 'ENTRÉE' : 'FRAPPE'}</span>
           {(['lifté', 'à plat', 'slice'] as StrokeType[]).map((item, index) => (
             <button
               key={item}
@@ -223,8 +240,8 @@ function App() {
         </div>
 
         <div className="match-help">
-          <span><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd> bouger</span>
-          <span><i className="mouse-icon" /> rejoindre la balle · viser · relâcher vite</span>
+          <span><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd> bouger · viser</span>
+          <span><kbd>Espace</kbd> armer / tirer · <kbd>Entrée</kbd> frappe · <kbd>R</kbd> nouveau point</span>
         </div>
 
         <MobileDpad disabled={snapshot.phase === 'decision' || snapshot.phase === 'point-over'} />

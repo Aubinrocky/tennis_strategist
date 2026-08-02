@@ -51,6 +51,8 @@ export class TennisScene extends Phaser.Scene {
   private trajectoryGraphics!: Phaser.GameObjects.Graphics;
   private activeBallTween?: Phaser.Tweens.Tween;
   private activeOpponentTween?: Phaser.Tweens.Tween;
+  private keyboardAiming = false;
+  private keyboardAimTarget: Point = { x: 0, y: -10.6 };
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd?: Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
   private playerPosition: Point = { x: 0, y: 13.5 };
@@ -103,6 +105,15 @@ export class TennisScene extends Phaser.Scene {
         left: Phaser.Input.Keyboard.KeyCodes.A,
         right: Phaser.Input.Keyboard.KeyCodes.D,
       }) as Record<'up' | 'down' | 'left' | 'right', Phaser.Input.Keyboard.Key>;
+      this.input.keyboard.addCapture([
+        Phaser.Input.Keyboard.KeyCodes.SPACE,
+        Phaser.Input.Keyboard.KeyCodes.UP,
+        Phaser.Input.Keyboard.KeyCodes.DOWN,
+        Phaser.Input.Keyboard.KeyCodes.LEFT,
+        Phaser.Input.Keyboard.KeyCodes.RIGHT,
+      ]);
+      this.input.keyboard.on('keydown-SPACE', this.handleKeyboardShotStart, this);
+      this.input.keyboard.on('keyup-SPACE', this.handleKeyboardShotRelease, this);
     }
 
     this.input.on('pointerdown', this.handlePointerDown, this);
@@ -120,11 +131,14 @@ export class TennisScene extends Phaser.Scene {
 
   update(time: number, delta: number) {
     if (this.phase === 'decision') {
+      if (this.keyboardAiming) this.updateKeyboardAim(delta);
       const remaining = Math.max(0, this.responseDeadline - time);
       if (time - this.lastSnapshotAt > 90) {
         this.lastSnapshotAt = time;
         this.publish(
-          'Déplacement verrouillé : choisis ta frappe, puis maintiens et relâche vers ta cible.',
+          this.keyboardAiming
+            ? 'Visée clavier : flèches pour la zone · Entrée pour la frappe · relâche Espace pour tirer.'
+            : 'Position verrouillée : maintiens Espace pour viser, puis relâche-la pour tirer.',
           `${this.lockedWing === 'coup droit' ? 'Coup droit' : 'Revers'} · ${this.lockedContact?.label ?? 'Zone de frappe atteinte'}`,
           remaining,
           this.decisionWindow,
@@ -260,6 +274,7 @@ export class TennisScene extends Phaser.Scene {
     this.lastPressure = 0;
     this.touchMovement = { x: 0, y: 0 };
     this.lockedContact = undefined;
+    this.keyboardAiming = false;
     this.pressStartedAt = 0;
     this.currentBallHeight = 1.04;
     this.aimGraphics.clear();
@@ -391,7 +406,7 @@ export class TennisScene extends Phaser.Scene {
     this.responseDeadline = now + this.decisionWindow;
     this.lastSnapshotAt = 0;
     this.publish(
-      'Position verrouillée. Choisis maintenant lifté, à plat ou slice, puis vise.',
+      'Position verrouillée. Maintiens Espace, vise avec les flèches, choisis la frappe avec Entrée, puis relâche Espace.',
       `${this.lockedWing === 'coup droit' ? 'Coup droit' : 'Revers'} · ${this.lockedContact.label}`,
       this.decisionWindow,
       this.decisionWindow,
@@ -454,19 +469,83 @@ export class TennisScene extends Phaser.Scene {
     });
   }
 
+  private handleKeyboardShotStart(event: KeyboardEvent) {
+    if (event.repeat || this.phase !== 'decision' || this.keyboardAiming) return;
+    event.preventDefault();
+    this.keyboardAiming = true;
+    this.pressStartedAt = this.time.now;
+    this.keyboardAimTarget = {
+      x: Phaser.Math.Clamp(-this.playerPosition.x * 0.45, -COURT.halfWidth + 0.25, COURT.halfWidth - 0.25),
+      y: -COURT.halfLength + 1.15,
+    };
+    this.drawAimAtWorld(this.keyboardAimTarget);
+    this.publish(
+      'Espace maintenue : déplace la cible avec les flèches · Entrée change la frappe · relâche pour tirer.',
+      `${this.selectedStroke} · cible profonde`,
+      Math.max(0, this.responseDeadline - this.time.now),
+      this.decisionWindow,
+    );
+  }
+
+  private handleKeyboardShotRelease(event: KeyboardEvent) {
+    if (!this.keyboardAiming) return;
+    event.preventDefault();
+    this.keyboardAiming = false;
+    if (this.phase !== 'decision' || !this.pressStartedAt) {
+      this.pressStartedAt = 0;
+      this.aimGraphics.clear();
+      this.intendedMarker.setVisible(false);
+      return;
+    }
+    const held = Math.max(0, this.time.now - this.pressStartedAt);
+    const power = Phaser.Math.Clamp(0.38 + held / 900, 0.38, 1);
+    const contact = this.lockedContact ?? this.currentContact(this.time.now);
+    const intendedTarget = { ...this.keyboardAimTarget };
+    this.pressStartedAt = 0;
+    this.aimGraphics.clear();
+    this.landingMarker.setVisible(false);
+    this.playPlayerShot(intendedTarget, power, contact);
+  }
+
+  private updateKeyboardAim(delta: number) {
+    const left = this.cursors?.left.isDown ?? false;
+    const right = this.cursors?.right.isDown ?? false;
+    const up = this.cursors?.up.isDown ?? false;
+    const down = this.cursors?.down.isDown ?? false;
+    let moveX = (right ? 1 : 0) - (left ? 1 : 0);
+    let moveY = (down ? 1 : 0) - (up ? 1 : 0);
+    const movementLength = Math.hypot(moveX, moveY);
+    if (movementLength > 1) {
+      moveX /= movementLength;
+      moveY /= movementLength;
+    }
+    const seconds = delta / 1000;
+    this.keyboardAimTarget.x = Phaser.Math.Clamp(
+      this.keyboardAimTarget.x + moveX * 5.2 * seconds,
+      -COURT.halfWidth + 0.2,
+      COURT.halfWidth - 0.2,
+    );
+    this.keyboardAimTarget.y = Phaser.Math.Clamp(
+      this.keyboardAimTarget.y + moveY * 7.4 * seconds,
+      -COURT.halfLength + 0.2,
+      -0.65,
+    );
+    this.drawAimAtWorld(this.keyboardAimTarget);
+  }
+
   private handlePointerDown(pointer: Phaser.Input.Pointer) {
-    if (this.phase !== 'decision') return;
+    if (this.phase !== 'decision' || this.keyboardAiming) return;
     this.pressStartedAt = pointer.downTime;
     this.drawAim(pointer.x, pointer.y);
   }
 
   private handlePointerMove(pointer: Phaser.Input.Pointer) {
-    if (this.phase !== 'decision' || !pointer.isDown) return;
+    if (this.phase !== 'decision' || this.keyboardAiming || !pointer.isDown) return;
     this.drawAim(pointer.x, pointer.y);
   }
 
   private handlePointerUp(pointer: Phaser.Input.Pointer) {
-    if (this.phase !== 'decision' || !this.pressStartedAt) return;
+    if (this.phase !== 'decision' || this.keyboardAiming || !this.pressStartedAt) return;
     const intendedTarget = this.screenToWorld(pointer.x, pointer.y);
     const held = Math.max(0, pointer.upTime - this.pressStartedAt);
     const power = Phaser.Math.Clamp(0.38 + held / 900, 0.38, 1);
@@ -606,6 +685,7 @@ export class TennisScene extends Phaser.Scene {
 
   private finishPoint(message: string) {
     this.phase = 'point-over';
+    this.keyboardAiming = false;
     this.pressStartedAt = 0;
     this.aimGraphics.clear();
     this.publish(`${message} Prends le temps de lire l’analyse, puis lance un nouveau point.`);
@@ -698,13 +778,18 @@ export class TennisScene extends Phaser.Scene {
   private drawAim(x: number, y: number) {
     const target = this.screenToWorld(x, y);
     const clampedTarget = { x: target.x, y: Math.min(-0.45, target.y) };
-    const screenTarget = this.worldToScreen(clampedTarget);
+    this.drawAimAtWorld(clampedTarget);
+  }
+
+  private drawAimAtWorld(target: Point) {
+    const screenTarget = this.worldToScreen(target);
     const start = this.worldToScreen(this.incomingTarget);
     this.aimGraphics.clear();
     this.aimGraphics.lineStyle(3, 0xe9ff55, 0.75);
     this.aimGraphics.lineBetween(start.x, start.y, screenTarget.x, screenTarget.y);
     this.aimGraphics.fillStyle(0xe9ff55, 0.18);
     this.aimGraphics.fillCircle(screenTarget.x, screenTarget.y, 17);
+    this.intendedMarker.setPosition(screenTarget.x, screenTarget.y).setVisible(true);
   }
 
   private setStroke(stroke: StrokeType) {
@@ -785,6 +870,8 @@ export class TennisScene extends Phaser.Scene {
 
   private cleanUp() {
     this.activeOpponentTween?.stop();
+    this.input.keyboard?.off('keydown-SPACE', this.handleKeyboardShotStart, this);
+    this.input.keyboard?.off('keyup-SPACE', this.handleKeyboardShotRelease, this);
     gameEvents.off('command:start', this.startPoint, this);
     gameEvents.off('command:stroke', this.setStroke, this);
     gameEvents.off('command:opponent', this.setOpponent, this);

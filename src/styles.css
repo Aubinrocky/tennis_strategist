@@ -365,6 +365,7 @@ kbd { min-width: 18px; height: 18px; display: inline-grid; place-items: center; 
 .contact-live > span { height: 3px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.1); }
 .contact-live > span i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #ff966e, var(--lime)); transition: width .09s linear; }
 .next-point-button { display: inline-flex; align-items: center; gap: 12px; margin-top: 9px; padding: 7px 11px; border: 0; border-radius: 999px; background: var(--lime); color: #102017; font-size: 8px; font-weight: 800; cursor: pointer; }
+.next-point-button kbd { border-color: rgba(16,32,23,.28); background: rgba(16,32,23,.08); color: #102017; }
 
 .match-controls { bottom: 22px; left: calc((100% - var(--coach-width)) / 2); display: flex; align-items: center; gap: 3px; transform: translateX(-50%); padding: 5px; border: 1px solid rgba(255,255,255,.13); border-radius: 999px; background: rgba(5, 17, 13, .76); backdrop-filter: blur(12px); }
 .match-controls > span { margin: 0 8px 0 10px; color: #788b83; font-size: 7px; font-weight: 800; letter-spacing: .14em; }

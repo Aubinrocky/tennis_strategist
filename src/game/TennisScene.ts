@@ -38,6 +38,7 @@ const HEIGHT = 720;
 const VIEW = { top: 54, bottom: 704, farWidth: 260, nearWidth: 850, worldHalfWidth: 6.7 };
 const CONTACT_RADIUS = 1.45;
 const HEIGHT_PIXELS_PER_METER = 58;
+const MIN_PLAYABLE_HEIGHT = 0.42;
 
 export class TennisScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Container;
@@ -64,7 +65,6 @@ export class TennisScene extends Phaser.Scene {
   private responseDeadline = 0;
   private bounceWindow = 0;
   private decisionWindow = 2600;
-  private readyAt?: number;
   private lockedContact?: ContactAnalysis;
   private lockedWing: StrokeWing = 'coup droit';
   private touchMovement: MovementVector = { x: 0, y: 0 };
@@ -165,17 +165,21 @@ export class TennisScene extends Phaser.Scene {
       this.incomingTarget.y,
     );
 
-    if (this.phase === 'bounce' && distanceToBall <= 0.9 && this.readyAt === undefined) {
-      this.readyAt = time;
-    }
-
     if (this.phase === 'bounce') {
+      const maxPlayableHeight = Math.min(2.15, this.profile.height / 100 * 1.12);
+      const ballIsStrikeable =
+        this.currentBallHeight >= MIN_PLAYABLE_HEIGHT &&
+        this.currentBallHeight <= maxPlayableHeight;
+      if (ballIsStrikeable && distanceToBall <= CONTACT_RADIUS) {
+        this.lockContact(time);
+        return;
+      }
       const remaining = Math.max(0, this.responseDeadline - time);
       if (time - this.lastSnapshotAt > 90) {
         this.lastSnapshotAt = time;
         this.publish(
-          'La balle a rebondi : derniers pas avant le verrouillage du contact.',
-          `${distanceToBall.toFixed(1)} m du point de contact`,
+          'Premier rebond valable : la balle reste en jeu derrière la ligne de fond.',
+          `${distanceToBall.toFixed(1)} m · balle à ${this.currentBallHeight.toFixed(1)} m`,
           remaining,
           this.bounceWindow,
         );
@@ -253,7 +257,6 @@ export class TennisScene extends Phaser.Scene {
     this.rally = 0;
     this.lastPressure = 0;
     this.touchMovement = { x: 0, y: 0 };
-    this.readyAt = undefined;
     this.lockedContact = undefined;
     this.pressStartedAt = 0;
     this.currentBallHeight = 1.04;
@@ -290,7 +293,6 @@ export class TennisScene extends Phaser.Scene {
     const physicalShot = { ...shot, duration: incomingFlight.durationMs };
     this.incomingTarget = shot.actualTarget;
     this.incomingArrivalAt = this.time.now + incomingFlight.durationMs;
-    this.readyAt = undefined;
     this.lockedContact = undefined;
     this.publish(
       `${this.opponentProfile.name} frappe ${shot.trajectory.spin} : cours pendant que la balle voyage.`,
@@ -320,31 +322,44 @@ export class TennisScene extends Phaser.Scene {
   private playBounceToContact(shot: OpponentShot, bounce: BallBounceModel) {
     this.phase = 'bounce';
     const bouncePoint = { ...shot.actualTarget };
-    const contactPoint = {
+    const idealContactPoint = {
       x: Phaser.Math.Clamp(bounce.contactPoint.x, -VIEW.worldHalfWidth + 0.35, VIEW.worldHalfWidth - 0.35),
       y: Phaser.Math.Clamp(bounce.contactPoint.y, 8.4, COURT.runOff - 0.45),
     };
-    const bounceDuration = bounce.durationMs;
+    const secondBouncePoint = {
+      x: Phaser.Math.Clamp(bounce.secondBouncePoint.x, -VIEW.worldHalfWidth + 0.25, VIEW.worldHalfWidth - 0.25),
+      y: Phaser.Math.Clamp(bounce.secondBouncePoint.y, 8.4, COURT.runOff - 0.25),
+    };
+    const bounceDuration = bounce.secondBounceDurationMs;
     this.bounceWindow = bounceDuration;
-    this.currentBallHeight = bounce.contactHeight;
-    this.incomingTarget = contactPoint;
-    this.incomingArrivalAt = this.time.now + bounceDuration;
-    this.responseDeadline = this.incomingArrivalAt;
-    this.readyAt = undefined;
-    const marker = this.worldToScreen(contactPoint);
+    this.currentBallHeight = TENNIS_BALL.radius;
+    this.incomingTarget = bouncePoint;
+    this.incomingArrivalAt = this.time.now + bounce.durationMs;
+    this.responseDeadline = this.time.now + bounceDuration;
+    const marker = this.worldToScreen(idealContactPoint);
     this.landingMarker.setPosition(marker.x, marker.y).setScale(3.4);
     this.publish(
-      `La balle a rebondi et poursuit réellement sa course sur ${bounce.distanceAfterBounce.toFixed(1)} m : accompagne sa montée.`,
-      `${bounce.speedAtContact.toFixed(1)} m/s · contact à ${bounce.contactHeight.toFixed(1)} m`,
+      `Premier rebond dans le court : la balle peut franchir la ligne de fond et reste jouable jusqu’au deuxième rebond.`,
+      `Zone conseillée à ${bounce.distanceAfterBounce.toFixed(1)} m · deuxième rebond à ${bounce.secondBounceDistance.toFixed(1)} m`,
       bounceDuration,
       bounceDuration,
     );
-    this.animateBall(bouncePoint, contactPoint, bounceDuration, shot.trajectory, (progress) => sampleBounceHeight(bounce, progress), (progress) => sampleBounceGroundProgress(bounce, progress), () => {
-      this.lockContactOrMiss(this.time.now);
-    });
+    this.animateBall(
+      bouncePoint,
+      secondBouncePoint,
+      bounceDuration,
+      shot.trajectory,
+      (progress) => sampleBounceHeight(bounce, progress),
+      (progress) => sampleBounceGroundProgress(bounce, progress),
+      () => this.missAtSecondBounce(),
+      (world, height) => {
+        this.incomingTarget = world;
+        this.currentBallHeight = height;
+      },
+    );
   }
 
-  private lockContactOrMiss(now: number) {
+  private lockContact(now: number) {
     if (this.phase !== 'bounce') return;
     const distance = Phaser.Math.Distance.Between(
       this.playerPosition.x,
@@ -353,16 +368,14 @@ export class TennisScene extends Phaser.Scene {
       this.incomingTarget.y,
     );
     this.lockedWing = this.determineStrokeWing();
-    const contactMoment = this.readyAt ?? now;
+    const contactMoment = now;
     this.lockedContact = analyseContact(
       distance,
       contactMoment - this.incomingArrivalAt,
       this.profile,
     );
-    if (distance > CONTACT_RADIUS) {
-      this.missAtContact(distance);
-      return;
-    }
+    this.activeBallTween?.stop();
+    this.trajectoryGraphics.clear();
     this.decisionWindow =
       this.lockedContact.quality === 'en avance'
         ? 4200
@@ -519,12 +532,20 @@ export class TennisScene extends Phaser.Scene {
     this.emitFeedbackAndFinish(feedback, 'Choix trop tardif. Point perdu.');
   }
 
-  private missAtContact(distance: number) {
+  private missAtSecondBounce() {
+    if (this.phase !== 'bounce') return;
+    const distance = Phaser.Math.Distance.Between(
+      this.playerPosition.x,
+      this.playerPosition.y,
+      this.incomingTarget.x,
+      this.incomingTarget.y,
+    );
+    this.lockedWing = this.determineStrokeWing();
     const baseContact = analyseContact(distance, 0, this.profile);
     const missedContact: ContactAnalysis = {
       ...baseContact,
       quality: 'manqué',
-      label: 'Hors du rayon de frappe',
+      label: 'Deuxième rebond',
     };
     const feedback = resolvePlayerShot(
       { x: 0, y: -7 },
@@ -538,11 +559,11 @@ export class TennisScene extends Phaser.Scene {
       0.5,
       this.lockedWing,
     ).feedback;
-    feedback.shotLabel = `Balle manquée · ${this.lockedWing}`;
-    feedback.title = 'Trop loin au passage de la balle';
-    feedback.explanation = `Quand la balle arrive à ta hauteur, tu es encore à ${distance.toFixed(1)} m du point de contact. Le déplacement est terminé : la balle est hors de portée.`;
-    feedback.alternative = 'Lis la direction dès la frappe adverse et coupe plus tôt la trajectoire vers le point de contact.';
-    this.emitFeedbackAndFinish(feedback, 'La balle passe à ta hauteur hors de portée. Point perdu.');
+    feedback.shotLabel = `Deuxième rebond · ${this.lockedWing}`;
+    feedback.title = 'Balle non interceptée avant le deuxième rebond';
+    feedback.explanation = `Le premier rebond était valable et la balle pouvait dépasser la ligne de fond. Le point se termine seulement sur ce deuxième rebond, à ${distance.toFixed(1)} m de toi.`;
+    feedback.alternative = 'Recule dans la trajectoire après le premier rebond ou coupe-la plus tôt dès que la balle entre dans ton rayon de frappe.';
+    this.emitFeedbackAndFinish(feedback, 'Deuxième rebond avant ta frappe. Point perdu.');
   }
 
   private emitFeedbackAndFinish(feedback: TacticalFeedback, message: string) {
@@ -577,6 +598,7 @@ export class TennisScene extends Phaser.Scene {
     heightAt: (progress: number) => number,
     groundProgressAt: (progress: number) => number,
     done: () => void,
+    onProgress?: (world: Point, height: number) => void,
   ) {
     this.activeBallTween?.stop();
     const fromScreen = this.worldToScreen(from);
@@ -597,6 +619,7 @@ export class TennisScene extends Phaser.Scene {
         };
         const floor = this.worldToScreen(world);
         const height = heightAt(progress.value);
+        onProgress?.(world, height);
         const depthScale = this.depthScale(world.y);
         this.ballShadow
           .setPosition(floor.x, floor.y + 4)

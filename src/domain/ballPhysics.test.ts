@@ -48,6 +48,8 @@ describe('ball physics', () => {
     expect(bounce.distanceAfterBounce).toBeGreaterThan(4.5);
     expect(bounce.contactPoint.y).toBeGreaterThan(13.5);
     expect(bounce.secondBounceDistance).toBeGreaterThan(bounce.distanceAfterBounce);
+    expect(bounce.secondBouncePoint.y).toBeGreaterThan(bounce.contactPoint.y);
+    expect(bounce.secondBounceDurationMs).toBeGreaterThan(bounce.durationMs);
   });
 
   it('loses horizontal speed at impact while preserving meaningful pace', () => {
@@ -82,14 +84,19 @@ describe('ball physics', () => {
     expect(sliceBounce.spinRpm).toBeLessThan(0);
   });
 
-  it('keeps the post-bounce animation above the surface and at contact height', () => {
+  it('keeps the ball active through the baseline until its second bounce', () => {
     const flight = modelBallFlight(origin, landing, trajectories.flat);
     const bounce = modelHardCourtBounce(origin, landing, flight, trajectories.flat, 180);
     const samples = Array.from({ length: 21 }, (_, index) =>
       sampleBounceHeight(bounce, index / 20),
     );
+    const idealContactProgress = bounce.durationMs / bounce.secondBounceDurationMs;
 
     expect(Math.min(...samples)).toBeGreaterThanOrEqual(TENNIS_BALL.radius);
-    expect(samples.at(-1)).toBeCloseTo(bounce.contactHeight, 2);
+    expect(sampleBounceHeight(bounce, idealContactProgress)).toBeCloseTo(
+      bounce.contactHeight,
+      2,
+    );
+    expect(samples.at(-1)).toBeCloseTo(TENNIS_BALL.radius, 2);
   });
 });

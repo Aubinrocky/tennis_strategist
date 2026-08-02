@@ -36,6 +36,8 @@ export type BallBounceModel = {
   contactPoint: Point;
   contactHeight: number;
   durationMs: number;
+  secondBouncePoint: Point;
+  secondBounceDurationMs: number;
   postBounceHorizontalSpeed: number;
   speedAtContact: number;
   postBounceVerticalSpeed: number;
@@ -192,6 +194,10 @@ export function modelHardCourtBounce(
     x: bouncePoint.x + direction.x * distanceAfterBounce,
     y: bouncePoint.y + direction.y * distanceAfterBounce,
   };
+  const secondBouncePoint = {
+    x: bouncePoint.x + direction.x * secondBounceDistance,
+    y: bouncePoint.y + direction.y * secondBounceDistance,
+  };
   const contactHeight = Math.max(
     TENNIS_BALL.radius,
     TENNIS_BALL.radius +
@@ -203,6 +209,8 @@ export function modelHardCourtBounce(
     contactPoint,
     contactHeight,
     durationMs: Math.round(contactTime * 1000),
+    secondBouncePoint,
+    secondBounceDurationMs: Math.round(secondBounceTime * 1000),
     postBounceHorizontalSpeed,
     speedAtContact:
       postBounceHorizontalSpeed /
@@ -218,7 +226,7 @@ export function modelHardCourtBounce(
 }
 
 export function sampleBounceHeight(model: BallBounceModel, progress: number) {
-  const t = clamp(progress, 0, 1) * (model.durationMs / 1000);
+  const t = clamp(progress, 0, 1) * (model.secondBounceDurationMs / 1000);
   return Math.max(
     TENNIS_BALL.radius,
     TENNIS_BALL.radius + model.postBounceVerticalSpeed * t - 0.5 * model.effectiveGravity * t ** 2,
@@ -226,10 +234,10 @@ export function sampleBounceHeight(model: BallBounceModel, progress: number) {
 }
 
 export function sampleBounceGroundProgress(model: BallBounceModel, progress: number) {
-  const t = clamp(progress, 0, 1) * (model.durationMs / 1000);
+  const t = clamp(progress, 0, 1) * (model.secondBounceDurationMs / 1000);
   return clamp(
     distanceWithQuadraticDrag(model.postBounceHorizontalSpeed, t) /
-      model.distanceAfterBounce,
+      model.secondBounceDistance,
     0,
     1,
   );

@@ -1,5 +1,16 @@
 import Phaser from 'phaser';
 import {
+  MEDIUM_HARD_COURT,
+  TENNIS_BALL,
+  modelBallFlight,
+  modelHardCourtBounce,
+  sampleBounceGroundProgress,
+  sampleBounceHeight,
+  sampleFlightGroundProgress,
+  sampleFlightHeight,
+  type BallBounceModel,
+} from '../domain/ballPhysics';
+import {
   analyseContact,
   chooseOpponentShot,
   COURT,
@@ -26,6 +37,7 @@ const WIDTH = 1100;
 const HEIGHT = 720;
 const VIEW = { top: 54, bottom: 704, farWidth: 260, nearWidth: 850, worldHalfWidth: 6.7 };
 const CONTACT_RADIUS = 1.45;
+const HEIGHT_PIXELS_PER_METER = 58;
 
 export class TennisScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Container;
@@ -42,6 +54,7 @@ export class TennisScene extends Phaser.Scene {
   private playerPosition: Point = { x: 0, y: 13.5 };
   private opponentPosition: Point = { x: 0, y: -13.2 };
   private incomingTarget: Point = { x: 0, y: 9 };
+  private currentBallHeight = 1.04;
   private phase: GamePhase = 'idle';
   private selectedStroke: StrokeType = 'lifté';
   private opponentProfile: Opponent = OPPONENTS[0];
@@ -243,6 +256,7 @@ export class TennisScene extends Phaser.Scene {
     this.readyAt = undefined;
     this.lockedContact = undefined;
     this.pressStartedAt = 0;
+    this.currentBallHeight = 1.04;
     this.aimGraphics.clear();
     this.landingMarker.setVisible(false);
     this.intendedMarker.setVisible(false);
@@ -261,46 +275,58 @@ export class TennisScene extends Phaser.Scene {
       this.lastPressure,
       [this.random(), this.random(), this.random()],
     );
+    const incomingFlight = modelBallFlight(
+      this.opponentPosition,
+      shot.actualTarget,
+      shot.trajectory,
+    );
+    const bounce = modelHardCourtBounce(
+      this.opponentPosition,
+      shot.actualTarget,
+      incomingFlight,
+      shot.trajectory,
+      this.profile.height,
+    );
+    const physicalShot = { ...shot, duration: incomingFlight.durationMs };
     this.incomingTarget = shot.actualTarget;
-    this.incomingArrivalAt = this.time.now + shot.duration;
+    this.incomingArrivalAt = this.time.now + incomingFlight.durationMs;
     this.readyAt = undefined;
     this.lockedContact = undefined;
     this.publish(
       `${this.opponentProfile.name} frappe ${shot.trajectory.spin} : cours pendant que la balle voyage.`,
       'Balle en approche',
     );
-    gameEvents.emit('game:opponent-explanation', shot.explanation);
+    gameEvents.emit(
+      'game:opponent-explanation',
+      shot.isFault
+        ? shot.explanation
+        : `${shot.explanation} Sur ce court ${MEDIUM_HARD_COURT.label}, la balle conserve ${Math.round(bounce.horizontalRetention * 100)} % de sa vitesse horizontale, remonte jusqu’à ${bounce.apexHeight.toFixed(1)} m et parcourt environ ${bounce.distanceAfterBounce.toFixed(1)} m avant ta zone de frappe.`,
+    );
     this.landingMarker.setVisible(true);
     this.landingMarker.setScale(1);
     const marker = this.worldToScreen(shot.actualTarget);
     this.landingMarker.setPosition(marker.x, marker.y);
-    this.animateOpponentRecovery(shot);
-    this.animateBall(this.opponentPosition, shot.actualTarget, shot.duration, shot.trajectory, () => {
+    this.animateOpponentRecovery(physicalShot);
+    this.animateBall(this.opponentPosition, shot.actualTarget, incomingFlight.durationMs, shot.trajectory, (progress) => sampleFlightHeight(incomingFlight, progress), (progress) => sampleFlightGroundProgress(incomingFlight, progress), () => {
       if (shot.isFault) {
         this.landingMarker.setVisible(false);
         this.finishPoint(`${this.opponentProfile.name} fait faute. Point gagné.`);
         return;
       }
-      this.playBounceToContact(shot);
+      this.playBounceToContact(physicalShot, bounce);
     });
   }
 
-  private playBounceToContact(shot: OpponentShot) {
+  private playBounceToContact(shot: OpponentShot, bounce: BallBounceModel) {
     this.phase = 'bounce';
     const bouncePoint = { ...shot.actualTarget };
-    const advance = shot.trajectory.spin === 'slice' ? 2.15 : shot.trajectory.spin === 'lifté' ? 2.85 : 3.35;
-    const lateralDrift = Math.sign(bouncePoint.x || 1) * (shot.trajectory.spin === 'slice' ? 0.32 : 0.12);
     const contactPoint = {
-      x: Phaser.Math.Clamp(bouncePoint.x + lateralDrift, -4.9, 4.9),
-      y: Phaser.Math.Clamp(bouncePoint.y + advance, 8.4, COURT.runOff - 0.55),
+      x: Phaser.Math.Clamp(bounce.contactPoint.x, -VIEW.worldHalfWidth + 0.35, VIEW.worldHalfWidth - 0.35),
+      y: Phaser.Math.Clamp(bounce.contactPoint.y, 8.4, COURT.runOff - 0.45),
     };
-    const bounceDuration = shot.trajectory.spin === 'slice' ? 720 : shot.trajectory.spin === 'lifté' ? 570 : 480;
+    const bounceDuration = bounce.durationMs;
     this.bounceWindow = bounceDuration;
-    const bounceTrajectory: TrajectoryProfile = {
-      spin: shot.trajectory.spin,
-      pace: shot.trajectory.pace * 0.72,
-      arc: shot.trajectory.spin === 'lifté' ? 0.34 : shot.trajectory.spin === 'slice' ? 0.16 : 0.22,
-    };
+    this.currentBallHeight = bounce.contactHeight;
     this.incomingTarget = contactPoint;
     this.incomingArrivalAt = this.time.now + bounceDuration;
     this.responseDeadline = this.incomingArrivalAt;
@@ -308,12 +334,12 @@ export class TennisScene extends Phaser.Scene {
     const marker = this.worldToScreen(contactPoint);
     this.landingMarker.setPosition(marker.x, marker.y).setScale(3.4);
     this.publish(
-      'La balle a rebondi : accompagne sa montée et termine ton placement.',
-      'Déplacement encore possible',
+      `La balle a rebondi et poursuit réellement sa course sur ${bounce.distanceAfterBounce.toFixed(1)} m : accompagne sa montée.`,
+      `${bounce.speedAtContact.toFixed(1)} m/s · contact à ${bounce.contactHeight.toFixed(1)} m`,
       bounceDuration,
       bounceDuration,
     );
-    this.animateBall(bouncePoint, contactPoint, bounceDuration, bounceTrajectory, () => {
+    this.animateBall(bouncePoint, contactPoint, bounceDuration, shot.trajectory, (progress) => sampleBounceHeight(bounce, progress), (progress) => sampleBounceGroundProgress(bounce, progress), () => {
       this.lockContactOrMiss(this.time.now);
     });
   }
@@ -434,9 +460,18 @@ export class TennisScene extends Phaser.Scene {
         y: 0.25,
       };
     }
-    const duration = Math.round(780 - resolution.trajectory.pace * 250);
+    const flight = modelBallFlight(
+      this.incomingTarget,
+      flightTarget,
+      resolution.trajectory,
+      {
+        startHeight: this.currentBallHeight,
+        endHeight: feedback.outcome === 'net' ? 0.78 : TENNIS_BALL.radius,
+      },
+    );
+    const duration = flight.durationMs;
     this.publish(`${this.lockedWing === 'coup droit' ? 'Coup droit' : 'Revers'} · ${contact.label}. La dispersion décide maintenant de la balle réelle.`);
-    this.animateBall(this.incomingTarget, flightTarget, duration, resolution.trajectory, () => {
+    this.animateBall(this.incomingTarget, flightTarget, duration, resolution.trajectory, (progress) => sampleFlightHeight(flight, progress), (progress) => sampleFlightGroundProgress(flight, progress), () => {
       gameEvents.emit('game:feedback', feedback);
       this.intendedMarker.setVisible(false);
       if (feedback.verdict === 'faute') {
@@ -539,13 +574,15 @@ export class TennisScene extends Phaser.Scene {
     to: Point,
     duration: number,
     trajectory: TrajectoryProfile,
+    heightAt: (progress: number) => number,
+    groundProgressAt: (progress: number) => number,
     done: () => void,
   ) {
     this.activeBallTween?.stop();
     const fromScreen = this.worldToScreen(from);
     this.ball.setPosition(fromScreen.x, fromScreen.y).setVisible(true);
     this.ballShadow.setPosition(fromScreen.x, fromScreen.y + 5).setVisible(true);
-    this.drawTrajectory(from, to, trajectory);
+    this.drawTrajectory(from, to, trajectory, heightAt, groundProgressAt);
     const progress = { value: 0 };
     this.activeBallTween = this.tweens.add({
       targets: progress,
@@ -553,15 +590,21 @@ export class TennisScene extends Phaser.Scene {
       duration,
       ease: 'Linear',
       onUpdate: () => {
+        const groundProgress = groundProgressAt(progress.value);
         const world = {
-          x: Phaser.Math.Linear(from.x, to.x, progress.value),
-          y: Phaser.Math.Linear(from.y, to.y, progress.value),
+          x: Phaser.Math.Linear(from.x, to.x, groundProgress),
+          y: Phaser.Math.Linear(from.y, to.y, groundProgress),
         };
         const floor = this.worldToScreen(world);
-        const height = Math.sin(progress.value * Math.PI) * (54 + trajectory.arc * 125);
+        const height = heightAt(progress.value);
         const depthScale = this.depthScale(world.y);
-        this.ballShadow.setPosition(floor.x, floor.y + 4).setScale(depthScale, depthScale * 0.75);
-        this.ball.setPosition(floor.x, floor.y - height * depthScale).setScale(depthScale * (1 + trajectory.pace * 0.12));
+        this.ballShadow
+          .setPosition(floor.x, floor.y + 4)
+          .setScale(depthScale * (1 + height * 0.08), depthScale * 0.75)
+          .setAlpha(Phaser.Math.Clamp(0.34 - height * 0.055, 0.12, 0.34));
+        this.ball
+          .setPosition(floor.x, floor.y - height * HEIGHT_PIXELS_PER_METER * depthScale)
+          .setScale(depthScale * (1 + trajectory.pace * 0.12));
       },
       onComplete: () => {
         this.ball.setScale(1);
@@ -572,16 +615,26 @@ export class TennisScene extends Phaser.Scene {
     });
   }
 
-  private drawTrajectory(from: Point, to: Point, trajectory: TrajectoryProfile) {
+  private drawTrajectory(
+    from: Point,
+    to: Point,
+    trajectory: TrajectoryProfile,
+    heightAt: (progress: number) => number,
+    groundProgressAt: (progress: number) => number,
+  ) {
     this.trajectoryGraphics.clear();
     const color = trajectory.spin === 'lifté' ? 0xe9ff55 : trajectory.spin === 'slice' ? 0x70ddff : 0xffbf82;
     this.trajectoryGraphics.lineStyle(2, color, 0.3);
     this.trajectoryGraphics.beginPath();
     for (let index = 0; index <= 20; index += 1) {
       const t = index / 20;
-      const world = { x: Phaser.Math.Linear(from.x, to.x, t), y: Phaser.Math.Linear(from.y, to.y, t) };
+      const groundProgress = groundProgressAt(t);
+      const world = {
+        x: Phaser.Math.Linear(from.x, to.x, groundProgress),
+        y: Phaser.Math.Linear(from.y, to.y, groundProgress),
+      };
       const floor = this.worldToScreen(world);
-      const height = Math.sin(t * Math.PI) * (54 + trajectory.arc * 125) * this.depthScale(world.y);
+      const height = heightAt(t) * HEIGHT_PIXELS_PER_METER * this.depthScale(world.y);
       if (index === 0) this.trajectoryGraphics.moveTo(floor.x, floor.y - height);
       else this.trajectoryGraphics.lineTo(floor.x, floor.y - height);
     }

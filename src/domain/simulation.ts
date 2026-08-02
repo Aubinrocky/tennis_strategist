@@ -12,7 +12,8 @@ import type {
 export const COURT = {
   halfWidth: 4.115,
   halfLength: 11.885,
-  runOff: 16.2,
+  // 6.4 m behind each baseline, matching a full-size tournament run-back.
+  runOff: 18.285,
 };
 
 const clamp = (value: number, min: number, max: number) =>

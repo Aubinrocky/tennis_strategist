@@ -23,7 +23,8 @@ import { gameEvents, type GamePhase } from './events';
 const WIDTH = 1100;
 const HEIGHT = 720;
 const VIEW = { top: 54, bottom: 704, farWidth: 260, nearWidth: 850, worldHalfWidth: 6.7 };
-const RESPONSE_WINDOW = 520;
+const CHASE_WINDOW = 2500;
+const READY_RADIUS = 1.6;
 
 export class TennisScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Container;
@@ -47,6 +48,9 @@ export class TennisScene extends Phaser.Scene {
   private pressStartedAt = 0;
   private incomingArrivalAt = 0;
   private responseDeadline = 0;
+  private decisionWindow = 2600;
+  private readyAt?: number;
+  private lockedContact?: ContactAnalysis;
   private rally = 0;
   private pointNumber = 0;
   private lastPressure = 0;
@@ -98,6 +102,7 @@ export class TennisScene extends Phaser.Scene {
   update(time: number, delta: number) {
     const canMove =
       this.phase === 'opponent' ||
+      this.phase === 'chase' ||
       this.phase === 'decision' ||
       this.phase === 'player' ||
       this.phase === 'feedback';
@@ -116,12 +121,46 @@ export class TennisScene extends Phaser.Scene {
     this.playerPosition.y = Phaser.Math.Clamp(this.playerPosition.y, 0.9, COURT.runOff - 0.45);
     this.syncActors();
 
-    if (this.phase === 'decision') {
+    const distanceToBall = Phaser.Math.Distance.Between(
+      this.playerPosition.x,
+      this.playerPosition.y,
+      this.incomingTarget.x,
+      this.incomingTarget.y,
+    );
+
+    if (this.phase === 'opponent' && distanceToBall <= 0.9 && this.readyAt === undefined) {
+      this.readyAt = time;
+    }
+
+    if (this.phase === 'chase') {
       const remaining = Math.max(0, this.responseDeadline - time);
-      const contact = this.currentContact(time);
+      if (distanceToBall <= READY_RADIUS) {
+        this.startDecisionWindow(time);
+        return;
+      }
       if (time - this.lastSnapshotAt > 90) {
         this.lastSnapshotAt = time;
-        this.publish('Frappe maintenant : ta fenêtre de contact se referme.', contact.label, remaining);
+        this.publish(
+          'La balle a rebondi : rejoins le cercle avant le deuxième rebond.',
+          `${distanceToBall.toFixed(1)} m de la zone de frappe`,
+          remaining,
+          CHASE_WINDOW,
+        );
+      }
+      if (remaining <= 0) this.missIncomingBall();
+      return;
+    }
+
+    if (this.phase === 'decision') {
+      const remaining = Math.max(0, this.responseDeadline - time);
+      if (time - this.lastSnapshotAt > 90) {
+        this.lastSnapshotAt = time;
+        this.publish(
+          'Choisis ta frappe, puis maintiens et relâche vers ta cible.',
+          this.lockedContact?.label ?? 'Zone de frappe atteinte',
+          remaining,
+          this.decisionWindow,
+        );
       }
       if (remaining <= 0) this.missIncomingBall();
     }
@@ -196,6 +235,8 @@ export class TennisScene extends Phaser.Scene {
     this.pointNumber += 1;
     this.rally = 0;
     this.lastPressure = 0;
+    this.readyAt = undefined;
+    this.lockedContact = undefined;
     this.pressStartedAt = 0;
     this.aimGraphics.clear();
     this.landingMarker.setVisible(false);
@@ -217,11 +258,12 @@ export class TennisScene extends Phaser.Scene {
     );
     this.incomingTarget = shot.actualTarget;
     this.incomingArrivalAt = this.time.now + shot.duration;
-    this.responseDeadline = this.incomingArrivalAt + RESPONSE_WINDOW;
+    this.responseDeadline = this.incomingArrivalAt + CHASE_WINDOW;
+    this.readyAt = undefined;
+    this.lockedContact = undefined;
     this.publish(
       `${this.opponentProfile.name} frappe ${shot.trajectory.spin} : cours pendant que la balle voyage.`,
       'Balle en approche',
-      shot.duration,
     );
     gameEvents.emit('game:opponent-explanation', shot.explanation);
     this.landingMarker.setVisible(true);
@@ -234,10 +276,57 @@ export class TennisScene extends Phaser.Scene {
         this.finishPoint(`${this.opponentProfile.name} fait faute. Point gagné.`);
         return;
       }
-      this.phase = 'decision';
-      const contact = this.currentContact(this.time.now);
-      this.publish('La balle est dans ta zone : vise et relâche sans attendre.', contact.label, RESPONSE_WINDOW);
+      this.phase = 'chase';
+      const distance = Phaser.Math.Distance.Between(
+        this.playerPosition.x,
+        this.playerPosition.y,
+        this.incomingTarget.x,
+        this.incomingTarget.y,
+      );
+      if (distance <= READY_RADIUS) {
+        this.startDecisionWindow(this.time.now);
+      } else {
+        this.publish(
+          'La balle a rebondi : rejoins le cercle avant le deuxième rebond.',
+          `${distance.toFixed(1)} m de la zone de frappe`,
+          CHASE_WINDOW,
+          CHASE_WINDOW,
+        );
+      }
     });
+  }
+
+  private startDecisionWindow(now: number) {
+    if (this.phase !== 'chase') return;
+    const distance = Phaser.Math.Distance.Between(
+      this.playerPosition.x,
+      this.playerPosition.y,
+      this.incomingTarget.x,
+      this.incomingTarget.y,
+    );
+    const contactMoment = this.readyAt ?? now;
+    this.lockedContact = analyseContact(
+      distance,
+      contactMoment - this.incomingArrivalAt,
+      this.profile,
+    );
+    this.decisionWindow =
+      this.lockedContact.quality === 'en avance'
+        ? 4200
+        : this.lockedContact.quality === 'équilibré'
+          ? 3800
+          : this.lockedContact.quality === 'en retard'
+            ? 3300
+            : 2800;
+    this.phase = 'decision';
+    this.responseDeadline = now + this.decisionWindow;
+    this.lastSnapshotAt = 0;
+    this.publish(
+      'Tu es placé. Choisis maintenant lifté, à plat ou slice, puis vise.',
+      this.lockedContact.label,
+      this.decisionWindow,
+      this.decisionWindow,
+    );
   }
 
   private animateOpponentRecovery(shot: OpponentShot) {
@@ -257,30 +346,22 @@ export class TennisScene extends Phaser.Scene {
   }
 
   private handlePointerDown(pointer: Phaser.Input.Pointer) {
-    const earlyWindowOpen =
-      this.phase === 'opponent' && this.incomingArrivalAt - this.time.now <= 300;
-    if (this.phase !== 'decision' && !earlyWindowOpen) return;
+    if (this.phase !== 'decision') return;
     this.pressStartedAt = pointer.downTime;
     this.drawAim(pointer.x, pointer.y);
   }
 
   private handlePointerMove(pointer: Phaser.Input.Pointer) {
-    if ((this.phase !== 'decision' && this.phase !== 'opponent') || !pointer.isDown) return;
+    if (this.phase !== 'decision' || !pointer.isDown) return;
     this.drawAim(pointer.x, pointer.y);
   }
 
   private handlePointerUp(pointer: Phaser.Input.Pointer) {
-    if ((this.phase !== 'decision' && this.phase !== 'opponent') || !this.pressStartedAt) return;
-    if (this.phase === 'opponent' && this.incomingArrivalAt - this.time.now > 240) {
-      this.pressStartedAt = 0;
-      this.aimGraphics.clear();
-      this.publish('Trop tôt : continue ta course et prépare la cible avant le contact.', 'Balle encore trop loin', this.incomingArrivalAt - this.time.now);
-      return;
-    }
+    if (this.phase !== 'decision' || !this.pressStartedAt) return;
     const intendedTarget = this.screenToWorld(pointer.x, pointer.y);
     const held = Math.max(0, pointer.upTime - this.pressStartedAt);
     const power = Phaser.Math.Clamp(0.38 + held / 900, 0.38, 1);
-    const contact = this.currentContact(this.time.now);
+    const contact = this.lockedContact ?? this.currentContact(this.time.now);
     this.pressStartedAt = 0;
     this.aimGraphics.clear();
     this.landingMarker.setVisible(false);
@@ -340,17 +421,21 @@ export class TennisScene extends Phaser.Scene {
   }
 
   private missIncomingBall() {
-    if (this.phase !== 'decision') return;
-    const contact = analyseContact(
-      Phaser.Math.Distance.Between(
-        this.playerPosition.x,
-        this.playerPosition.y,
-        this.incomingTarget.x,
-        this.incomingTarget.y,
-      ),
-      RESPONSE_WINDOW + 1,
-      this.profile,
-    );
+    if (this.phase !== 'decision' && this.phase !== 'chase') return;
+    const decisionExpired = this.phase === 'decision';
+    const reachedContact = this.lockedContact ?? this.currentContact(this.time.now);
+    const contact: ContactAnalysis = decisionExpired
+      ? { ...reachedContact, quality: 'manqué', label: 'Temps de décision écoulé' }
+      : analyseContact(
+          Phaser.Math.Distance.Between(
+            this.playerPosition.x,
+            this.playerPosition.y,
+            this.incomingTarget.x,
+            this.incomingTarget.y,
+          ),
+          CHASE_WINDOW + 1,
+          this.profile,
+        );
     const feedback = resolvePlayerShot(
       { x: 0, y: -7 },
       this.playerPosition,
@@ -362,7 +447,19 @@ export class TennisScene extends Phaser.Scene {
       0.5,
       0.5,
     ).feedback;
-    this.emitFeedbackAndFinish(feedback, 'Deuxième rebond : balle manquée. Point perdu.');
+    if (decisionExpired) {
+      feedback.shotLabel = 'Aucune frappe';
+      feedback.title = 'Temps de décision écoulé';
+      feedback.explanation = `Tu avais rejoint la balle, mais les ${(this.decisionWindow / 1000).toFixed(1)} secondes de réflexion sont écoulées sans frappe.`;
+      feedback.alternative = 'Utilise 1, 2 ou 3 dès l’ouverture de la jauge, puis consacre le reste du temps à viser.';
+      feedback.contactQuality = reachedContact.quality;
+    }
+    this.emitFeedbackAndFinish(
+      feedback,
+      decisionExpired
+        ? 'Choix trop tardif. Point perdu.'
+        : 'Deuxième rebond : balle manquée. Point perdu.',
+    );
   }
 
   private emitFeedbackAndFinish(feedback: TacticalFeedback, message: string) {
@@ -467,13 +564,19 @@ export class TennisScene extends Phaser.Scene {
     this.profile = profile;
   }
 
-  private publish(instruction: string, contactLabel?: string, timeLeft?: number) {
+  private publish(
+    instruction: string,
+    contactLabel?: string,
+    timeLeft?: number,
+    timeTotal?: number,
+  ) {
     gameEvents.emit('game:snapshot', {
       phase: this.phase,
       instruction,
       rally: this.rally,
       contactLabel,
       timeLeft,
+      timeTotal,
     });
   }
 

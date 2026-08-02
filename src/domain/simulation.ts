@@ -57,12 +57,12 @@ export function analyseContact(
   const reachAllowance = 0.62 + profile.agility * 0.055;
   const reach = clamp(1 - Math.max(0, distanceToBall - reachAllowance) / 2.25, 0, 1);
   const absoluteTiming = Math.abs(arrivalOffsetMs);
-  const timing = clamp(1 - absoluteTiming / 620, 0, 1);
+  const timing = clamp(1 - absoluteTiming / 1800, 0, 1);
 
   let quality: ContactQuality;
-  if (distanceToBall > 2.65 || arrivalOffsetMs > 560) quality = 'manqué';
-  else if (distanceToBall > 1.55 || arrivalOffsetMs > 350) quality = 'en extension';
-  else if (arrivalOffsetMs > 145 || distanceToBall > 1.05) quality = 'en retard';
+  if (distanceToBall > 2.65 || arrivalOffsetMs > 2500) quality = 'manqué';
+  else if (distanceToBall > 1.55 || arrivalOffsetMs > 1750) quality = 'en extension';
+  else if (arrivalOffsetMs > 650 || distanceToBall > 1.05) quality = 'en retard';
   else if (arrivalOffsetMs < -170) quality = 'en avance';
   else quality = 'équilibré';
 

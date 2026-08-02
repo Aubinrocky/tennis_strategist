@@ -319,8 +319,9 @@ kbd { min-width: 18px; height: 18px; display: inline-grid; place-items: center; 
 .match-instruction { top: 78px; left: calc((100% - var(--coach-width)) / 2); min-width: 340px; max-width: min(560px, calc(100% - var(--coach-width) - 40px)); transform: translateX(-50%); padding: 9px 15px; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; background: rgba(5, 17, 13, .68); text-align: center; backdrop-filter: blur(12px); }
 .match-instruction span { color: var(--lime); font-size: 7px; font-weight: 800; letter-spacing: .14em; }
 .match-instruction p { margin: 2px 0 0; color: #cbd5d0; font-size: 10px; }
-.contact-live { display: grid; grid-template-columns: minmax(0, 1fr) 86px; align-items: center; gap: 10px; margin-top: 7px; padding-top: 7px; border-top: 1px solid rgba(255,255,255,.09); }
+.contact-live { display: grid; grid-template-columns: minmax(0, 1fr) auto 86px; align-items: center; gap: 9px; margin-top: 7px; padding-top: 7px; border-top: 1px solid rgba(255,255,255,.09); }
 .contact-live strong { overflow: hidden; color: #f3f5ed; font-size: 8px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.contact-live em { color: var(--lime); font: 800 8px Manrope, sans-serif; font-style: normal; }
 .contact-live > span { height: 3px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.1); }
 .contact-live > span i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #ff966e, var(--lime)); transition: width .09s linear; }
 .next-point-button { display: inline-flex; align-items: center; gap: 12px; margin-top: 9px; padding: 7px 11px; border: 0; border-radius: 999px; background: var(--lime); color: #102017; font-size: 8px; font-weight: 800; cursor: pointer; }
@@ -328,7 +329,14 @@ kbd { min-width: 18px; height: 18px; display: inline-grid; place-items: center; 
 .match-controls { bottom: 22px; left: calc((100% - var(--coach-width)) / 2); display: flex; align-items: center; gap: 3px; transform: translateX(-50%); padding: 5px; border: 1px solid rgba(255,255,255,.13); border-radius: 999px; background: rgba(5, 17, 13, .76); backdrop-filter: blur(12px); }
 .match-controls > span { margin: 0 8px 0 10px; color: #788b83; font-size: 7px; font-weight: 800; letter-spacing: .14em; }
 .match-controls button { min-width: 66px; padding: 8px 12px; border: 0; border-radius: 999px; background: transparent; color: #8b9b94; font-size: 9px; text-transform: capitalize; cursor: pointer; }
+.match-controls button kbd { margin-right: 5px; color: inherit; font-size: 7px; opacity: .62; }
 .match-controls button.is-active { background: var(--lime); color: #102017; font-weight: 800; }
+.match-controls button:disabled { cursor: default; opacity: .42; }
+.match-controls button.is-active:disabled { background: rgba(223,255,105,.12); color: #a6b783; }
+.match-controls.is-focus { border-color: rgba(223,255,105,.55); box-shadow: 0 0 0 4px rgba(223,255,105,.07), 0 15px 40px rgba(0,0,0,.28); animation: controls-focus .34s ease-out both; }
+.match-controls.is-focus > span { color: var(--lime); }
+.match-controls.is-focus button { opacity: 1; }
+@keyframes controls-focus { from { transform: translateX(-50%) translateY(8px); opacity: .72; } }
 .match-help { bottom: 26px; left: 22px; display: flex; gap: 17px; color: #87978f; font-size: 8px; }
 .match-help span { display: flex; align-items: center; gap: 3px; }
 .match-help kbd { min-width: 16px; height: 16px; font-size: 8px; }

@@ -26,6 +26,7 @@ const INITIAL_SNAPSHOT: GameSnapshot = {
 const PHASE_LABELS: Record<GameSnapshot['phase'], string> = {
   idle: 'Préparation',
   opponent: 'Frappe adverse',
+  chase: 'Course vers la balle',
   decision: 'À toi de jouer',
   player: 'Ta trajectoire',
   feedback: 'Analyse',
@@ -111,6 +112,19 @@ function App() {
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [coachMessages]);
 
+  useEffect(() => {
+    if (screen !== 'match' || snapshot.phase !== 'decision') return;
+    const handleStrokeShortcut = (event: KeyboardEvent) => {
+      if (event.key !== '1' && event.key !== '2' && event.key !== '3') return;
+      const choices: StrokeType[] = ['lifté', 'à plat', 'slice'];
+      const nextStroke = choices[Number(event.key) - 1];
+      setStroke(nextStroke);
+      emitStroke(nextStroke);
+    };
+    window.addEventListener('keydown', handleStrokeShortcut);
+    return () => window.removeEventListener('keydown', handleStrokeShortcut);
+  }, [screen, snapshot.phase]);
+
   const selectStroke = (value: StrokeType) => {
     setStroke(value);
     emitStroke(value);
@@ -177,7 +191,10 @@ function App() {
             <div className="contact-live">
               <strong>{snapshot.contactLabel}</strong>
               {snapshot.timeLeft !== undefined && (
-                <span><i style={{ width: `${Math.max(0, Math.min(100, snapshot.timeLeft / 5.2))}%` }} /></span>
+                <>
+                  <em>{(snapshot.timeLeft / 1000).toFixed(1)} s</em>
+                  <span><i style={{ width: `${Math.max(0, Math.min(100, (snapshot.timeLeft / (snapshot.timeTotal ?? 520)) * 100))}%` }} /></span>
+                </>
               )}
             </div>
           )}
@@ -186,11 +203,16 @@ function App() {
           )}
         </div>
 
-        <div className="match-controls" aria-label="Type de frappe">
-          <span>FRAPPE</span>
-          {(['lifté', 'à plat', 'slice'] as StrokeType[]).map((item) => (
-            <button key={item} className={stroke === item ? 'is-active' : ''} onClick={() => selectStroke(item)}>
-              {item}
+        <div className={`match-controls ${snapshot.phase === 'decision' ? 'is-focus' : ''}`} aria-label="Type de frappe">
+          <span>{snapshot.phase === 'decision' ? 'CHOISIS' : 'FRAPPE'}</span>
+          {(['lifté', 'à plat', 'slice'] as StrokeType[]).map((item, index) => (
+            <button
+              key={item}
+              className={stroke === item ? 'is-active' : ''}
+              onClick={() => selectStroke(item)}
+              disabled={snapshot.phase !== 'decision'}
+            >
+              <kbd>{index + 1}</kbd>{item}
             </button>
           ))}
         </div>

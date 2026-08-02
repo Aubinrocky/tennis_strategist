@@ -51,6 +51,13 @@ describe('tactical simulation', () => {
     expect(balanced.precision).toBeGreaterThan(stretched.precision);
   });
 
+  it('keeps a late arrival playable during the assisted decision window', () => {
+    const late = analyseContact(1.2, 600, DEFAULT_PROFILE);
+
+    expect(late.quality).toBe('en retard');
+    expect(late.precision).toBeGreaterThan(0);
+  });
+
   it('turns an ambitious line target into a possible real error', () => {
     const stretched = analyseContact(1.9, 380, DEFAULT_PROFILE);
     const shot = resolvePlayerShot(

@@ -3,6 +3,7 @@ import {
   analyseContact,
   chooseOpponentShot,
   chooseOpponentTarget,
+  determineStrokeWing,
   evaluateShot,
   isTargetInCourt,
   resolvePlayerShot,
@@ -40,6 +41,29 @@ describe('tactical simulation', () => {
     const target = chooseOpponentTarget(OPPONENTS[0], { x: 2, y: 8 }, 0.5);
     expect(target.x).toBeLessThan(0);
     expect(target.y).toBeGreaterThan(0);
+  });
+
+  it('selects forehand or backhand from ball position and handedness', () => {
+    expect(determineStrokeWing(0, 1.2, 'Droitier')).toBe('coup droit');
+    expect(determineStrokeWing(0, -1.2, 'Droitier')).toBe('revers');
+    expect(determineStrokeWing(0, 1.2, 'Gaucher')).toBe('revers');
+  });
+
+  it('uses the corresponding forehand or backhand skill for dispersion', () => {
+    const specialisedProfile = { ...DEFAULT_PROFILE, forehand: 5, backhand: 1 };
+    const contact = analyseContact(0.5, 0, specialisedProfile);
+    const forehand = resolvePlayerShot(
+      { x: 1, y: -8 }, { x: 0, y: 10 }, { x: 0, y: -9 }, 'lifté', 0.65,
+      specialisedProfile, contact, 0.9, 0.5, 'coup droit',
+    );
+    const backhand = resolvePlayerShot(
+      { x: 1, y: -8 }, { x: 0, y: 10 }, { x: 0, y: -9 }, 'lifté', 0.65,
+      specialisedProfile, contact, 0.9, 0.5, 'revers',
+    );
+
+    expect(Math.abs(forehand.actualTarget.x - 1)).toBeLessThan(Math.abs(backhand.actualTarget.x - 1));
+    expect(forehand.feedback.shotLabel).toContain('Coup droit');
+    expect(backhand.feedback.shotLabel).toContain('Revers');
   });
 
   it('reduces precision when the player reaches the ball late and stretched', () => {

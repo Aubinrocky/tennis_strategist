@@ -26,7 +26,7 @@ const INITIAL_SNAPSHOT: GameSnapshot = {
 const PHASE_LABELS: Record<GameSnapshot['phase'], string> = {
   idle: 'Préparation',
   opponent: 'Frappe adverse',
-  chase: 'Course vers la balle',
+  bounce: 'Après le rebond',
   decision: 'À toi de jouer',
   player: 'Ta trajectoire',
   feedback: 'Analyse',
@@ -45,6 +45,7 @@ type CoachMessage = {
   verdict?: TacticalFeedback['verdict'];
   contact?: string;
   outcome?: TacticalFeedback['outcome'];
+  wing?: TacticalFeedback['wing'];
 };
 
 function App() {
@@ -85,6 +86,7 @@ function App() {
           verdict: nextFeedback.verdict,
           contact: nextFeedback.contactQuality,
           outcome: nextFeedback.outcome,
+          wing: nextFeedback.wing,
         },
       ]);
     });
@@ -246,7 +248,7 @@ function App() {
                 </div>
                 {message.contact && (
                   <div className={`coach-contact coach-contact--${message.outcome}`}>
-                    Contact · {message.contact}{message.outcome === 'out' ? ' · balle dehors' : message.outcome === 'net' ? ' · filet' : message.outcome === 'miss' ? ' · manquée' : ' · balle bonne'}
+                    {message.wing ? `${message.wing} · ` : ''}Contact {message.contact}{message.outcome === 'out' ? ' · balle dehors' : message.outcome === 'net' ? ' · filet' : message.outcome === 'miss' ? ' · manquée' : ' · balle bonne'}
                   </div>
                 )}
                 <p>{message.body}</p>

@@ -6,7 +6,7 @@ import type {
   TacticalFeedback,
 } from '../domain/types';
 
-export type GamePhase = 'idle' | 'opponent' | 'chase' | 'decision' | 'player' | 'feedback' | 'point-over';
+export type GamePhase = 'idle' | 'opponent' | 'bounce' | 'decision' | 'player' | 'feedback' | 'point-over';
 
 export type GameSnapshot = {
   phase: GamePhase;

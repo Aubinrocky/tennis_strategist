@@ -1,4 +1,5 @@
 export type StrokeType = 'lifté' | 'à plat' | 'slice';
+export type StrokeWing = 'coup droit' | 'revers';
 
 export type Point = {
   x: number;
@@ -51,6 +52,7 @@ export type TacticalFeedback = {
   actualTarget?: Point;
   outcome?: 'in' | 'out' | 'net' | 'miss';
   pressure?: number;
+  wing?: StrokeWing;
 };
 
 export const DEFAULT_PROFILE: PlayerProfile = {

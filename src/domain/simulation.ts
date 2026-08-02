@@ -4,6 +4,7 @@ import type {
   PlayerProfile,
   Point,
   StrokeType,
+  StrokeWing,
   TacticalFeedback,
   TrajectoryProfile,
 } from './types';
@@ -49,6 +50,16 @@ export function isTargetInCourt(target: Point, opponentSide = true) {
   );
 }
 
+export function determineStrokeWing(
+  playerX: number,
+  ballX: number,
+  dominantHand: PlayerProfile['dominantHand'],
+): StrokeWing {
+  const ballOnRight = ballX - playerX >= 0;
+  const isForehand = dominantHand === 'Droitier' ? ballOnRight : !ballOnRight;
+  return isForehand ? 'coup droit' : 'revers';
+}
+
 export function analyseContact(
   distanceToBall: number,
   arrivalOffsetMs: number,
@@ -92,8 +103,9 @@ export function resolvePlayerShot(
   contact: ContactAnalysis,
   lateralRoll: number,
   depthRoll: number,
+  wing: StrokeWing = 'coup droit',
 ): ShotResolution {
-  const skill = ((profile.forehand + profile.backhand) / 2 - 1) / 4;
+  const skill = ((wing === 'coup droit' ? profile.forehand : profile.backhand) - 1) / 4;
   const strokeControl = stroke === 'lifté' ? 0.18 : stroke === 'slice' ? 0.08 : -0.06;
   const powerPenalty = clamp((power - 0.62) * 0.62, 0, 0.28);
   const dispersion = clamp(1.62 - contact.precision * 1.1 - skill * 0.25 - strokeControl + powerPenalty, 0.18, 1.75);
@@ -126,6 +138,7 @@ export function resolvePlayerShot(
       profile,
       contact,
       trajectory,
+      wing,
     ),
   };
 }
@@ -140,6 +153,7 @@ function evaluateResolvedShot(
   profile: PlayerProfile,
   contact: ContactAnalysis,
   trajectory: TrajectoryProfile,
+  wing: StrokeWing,
 ): TacticalFeedback {
   const isSameLane =
     Math.sign(intendedTarget.x) === Math.sign(playerPosition.x) && Math.abs(playerPosition.x) > 0.8;
@@ -147,7 +161,7 @@ function evaluateResolvedShot(
     Math.abs(intendedTarget.x) < 0.9 ? 'au centre' : isSameLane ? 'long de ligne' : 'croisé';
   const targetDepth = clamp((-intendedTarget.y - 3.5) / 8.2, 0, 1);
   const length = targetDepth > 0.68 ? 'profond' : targetDepth < 0.24 ? 'court' : 'mi-long';
-  const shotLabel = `${stroke.charAt(0).toUpperCase()}${stroke.slice(1)} ${direction}, ${length}`;
+  const shotLabel = `${wing === 'coup droit' ? 'Coup droit' : 'Revers'} ${stroke} ${direction}, ${length}`;
 
   if (contact.quality === 'manqué') {
     return faultFeedback(
@@ -159,6 +173,7 @@ function evaluateResolvedShot(
       'Balle hors de portée',
       "Tu n’as pas rejoint la zone de frappe avant le deuxième rebond. Le problème vient d’abord du replacement, pas du choix de cible.",
       'Reviens vers le centre de récupération dès ta frappe précédente.',
+      wing,
     );
   }
 
@@ -173,6 +188,7 @@ function evaluateResolvedShot(
       'Balle dans le filet',
       `La trajectoire ${stroke === 'à plat' ? 'très tendue' : 'trop basse'} ne laisse pas assez de marge depuis une frappe ${contact.quality}.`,
       'Ajoute du lift ou réduis la puissance pour retrouver de la hauteur au-dessus du filet.',
+      wing,
     );
   }
 
@@ -187,6 +203,7 @@ function evaluateResolvedShot(
       'Cible ambitieuse, balle dehors',
       `Tu visais à ${Math.max(0, lineMargin).toFixed(1)} m de la ligne avec une frappe ${contact.quality}. La dispersion réelle a déplacé la balle hors du court.`,
       'Quand tu es en retard, vise deux mètres à l’intérieur des lignes et utilise la diagonale.',
+      wing,
     );
   }
 
@@ -239,6 +256,7 @@ function evaluateResolvedShot(
     actualTarget,
     outcome: 'in',
     pressure,
+    wing,
   };
 }
 
@@ -251,6 +269,7 @@ function faultFeedback(
   title: string,
   explanation: string,
   alternative: string,
+  wing: StrokeWing,
 ): TacticalFeedback {
   return {
     verdict: 'faute',
@@ -269,6 +288,7 @@ function faultFeedback(
     actualTarget,
     outcome,
     pressure: 0,
+    wing,
   };
 }
 
